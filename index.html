@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tách script từ slide PowerPoint</title>
+<style>
+  :root{
+    --paper:#F7F8F6;
+    --ink:#1C2B24;
+    --ink-soft:#5A6B62;
+    --line:#D5DCD6;
+    --green:#1E6F50;
+    --green-dark:#155039;
+    --warn:#A33A2B;
+    --card:#FFFFFF;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+    font-size:16px;
+    line-height:1.55;
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:40px 24px 80px}
+  header{margin-bottom:36px;border-bottom:2px solid var(--ink);padding-bottom:20px}
+  h1{margin:0 0 8px;font-size:30px;font-weight:650;letter-spacing:-.015em;line-height:1.2}
+  header p{margin:0;color:var(--ink-soft);max-width:60ch}
+
+  .drop{
+    border:2px dashed var(--line);
+    background:var(--card);
+    border-radius:6px;
+    padding:44px 28px;
+    text-align:center;
+    transition:border-color .15s, background .15s;
+  }
+  .drop.over{border-color:var(--green);background:#F0F7F3}
+  .drop h2{margin:0 0 6px;font-size:19px;font-weight:600}
+  .drop p{margin:0 0 20px;color:var(--ink-soft);font-size:14.5px}
+
+  button{
+    font:inherit;font-weight:600;
+    background:var(--green);color:#fff;
+    border:none;border-radius:5px;
+    padding:11px 22px;cursor:pointer;
+    transition:background .15s;
+  }
+  button:hover{background:var(--green-dark)}
+  button:focus-visible{outline:3px solid #9CC9B6;outline-offset:2px}
+  button:disabled{background:#A9B5AE;cursor:default}
+  button.ghost{background:transparent;color:var(--green);border:1.5px solid var(--line);padding:9px 18px}
+  button.ghost:hover{background:#EDF3EF;border-color:var(--green)}
+
+  .status{margin-top:22px;font-size:15px}
+  .status.err{color:var(--warn);font-weight:600}
+
+  .result{margin-top:34px;display:none}
+  .result.on{display:block}
+  .bar{
+    display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;
+    padding-bottom:14px;margin-bottom:0;border-bottom:1px solid var(--line);
+  }
+  .bar h2{margin:0;font-size:19px;font-weight:600}
+  .meta{color:var(--ink-soft);font-size:14px;margin:4px 0 18px}
+  .actions{display:flex;gap:10px}
+
+  .tblwrap{border:1px solid var(--line);border-radius:6px;overflow:auto;background:var(--card);max-height:520px}
+  table{border-collapse:collapse;width:100%;font-size:14.5px}
+  thead th{
+    position:sticky;top:0;background:#ECF1EE;text-align:left;
+    padding:11px 14px;font-weight:600;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  td{padding:11px 14px;border-bottom:1px solid #EDF0EE;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td.no{width:70px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  td.ttl{width:230px;font-weight:550}
+  td.scr{white-space:pre-wrap}
+  td.empty{color:var(--warn)}
+
+  .note{margin-top:26px;padding:16px 18px;background:#EFF3F0;border-left:3px solid var(--green);border-radius:0 5px 5px 0;font-size:14.5px;color:var(--ink-soft)}
+  .note strong{color:var(--ink)}
+  .note ul{margin:8px 0 0;padding-left:20px}
+  .note li{margin-bottom:4px}
+
+  @media (max-width:640px){
+    .wrap{padding:28px 16px 60px}
+    h1{font-size:24px}
+    td.ttl{width:auto}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Tách script từ slide PowerPoint</h1>
+  <p>Chọn một file .pptx, công cụ đọc tiêu đề, nội dung trên slide và phần ghi chú thuyết trình, rồi xuất ra file Excel ba cột. Toàn bộ xử lý diễn ra ngay trên máy bạn — file không được gửi đi đâu cả.</p>
+</header>
+
+<div class="drop" id="drop">
+  <h2>Kéo file .pptx vào đây</h2>
+  <p>hoặc chọn từ máy tính</p>
+  <button id="pick">Chọn file PowerPoint</button>
+  <input type="file" id="file" accept=".pptx" hidden>
+  <div class="status" id="status"></div>
+</div>
+
+<section class="result" id="result">
+  <div class="bar">
+    <h2>Kết quả</h2>
+    <div class="actions">
+      <button class="ghost" id="again">Chọn file khác</button>
+      <button id="dl">Tải file Excel</button>
+    </div>
+  </div>
+  <p class="meta" id="meta"></p>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>STT Slide</th><th>Tiêu đề / Chủ đề</th><th>Nội dung Script</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="note" id="limits"></div>
+</section>
+
+</div>
+<script>
+// ---------- ZIP READER (không thư viện) ----------
+async function inflateRaw(bytes) {
+  const ds = new DecompressionStream('deflate-raw');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function readZip(buf) {
+  const dv = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  // tìm End Of Central Directory
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= 0 && i > u8.length - 66000; i--) {
+    if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Không đọc được cấu trúc file (thiếu EOCD).');
+
+  const count = dv.getUint16(eocd + 10, true);
+  let ptr = dv.getUint32(eocd + 16, true);
+  const files = new Map();
+  const dec = new TextDecoder();
+
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(ptr, true) !== 0x02014b50) break;
+    const method = dv.getUint16(ptr + 10, true);
+    const compSize = dv.getUint32(ptr + 20, true);
+    const nameLen = dv.getUint16(ptr + 28, true);
+    const extraLen = dv.getUint16(ptr + 30, true);
+    const cmtLen = dv.getUint16(ptr + 32, true);
+    const localOff = dv.getUint32(ptr + 42, true);
+    const name = dec.decode(u8.subarray(ptr + 46, ptr + 46 + nameLen));
+
+    // đọc local header để biết offset dữ liệu thật
+    const lNameLen = dv.getUint16(localOff + 26, true);
+    const lExtraLen = dv.getUint16(localOff + 28, true);
+    const dataStart = localOff + 30 + lNameLen + lExtraLen;
+
+    files.set(name, { method, data: u8.subarray(dataStart, dataStart + compSize) });
+    ptr += 46 + nameLen + extraLen + cmtLen;
+  }
+
+  return {
+    names: () => [...files.keys()],
+    has: (n) => files.has(n),
+    async text(n) {
+      const f = files.get(n);
+      if (!f) return null;
+      const raw = f.method === 0 ? f.data : await inflateRaw(f.data);
+      return new TextDecoder('utf-8').decode(raw);
+    }
+  };
+}
+
+// ---------- PPTX PARSER ----------
+const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const NS_P = 'http://schemas.openxmlformats.org/presentationml/2006/main';
+
+function paraText(p) {
+  // gom các run <a:t> trong 1 paragraph thành 1 dòng
+  const ts = p.getElementsByTagNameNS(NS_A, 't');
+  let s = '';
+  for (let i = 0; i < ts.length; i++) s += ts[i].textContent;
+  return s.replace(/\u00a0/g, ' ').trim();
+}
+
+function shapeLines(sp) {
+  const txBodies = sp.getElementsByTagNameNS(NS_P, 'txBody');
+  const out = [];
+  for (let b = 0; b < txBodies.length; b++) {
+    const ps = txBodies[b].getElementsByTagNameNS(NS_A, 'p');
+    for (let i = 0; i < ps.length; i++) {
+      const t = paraText(ps[i]);
+      if (t) out.push(t);
+    }
+  }
+  return out;
+}
+
+function phType(sp) {
+  const ph = sp.getElementsByTagNameNS(NS_A, 'ph')[0]
+          || sp.getElementsByTagNameNS(NS_P, 'ph')[0];
+  return ph ? (ph.getAttribute('type') || 'body') : null;
+}
+
+// duyệt spTree theo thứ tự tài liệu, đi vào cả group shape
+function walkShapes(node, cb, parser) {
+  for (let i = 0; i < node.childNodes.length; i++) {
+    const el = node.childNodes[i];
+    if (el.nodeType !== 1) continue;
+    const ln = el.localName;
+    if (ln === 'sp') cb(el);
+    else if (ln === 'graphicFrame') cb(el);
+    else if (ln === 'grpSp') walkShapes(el, cb, parser);
+  }
+}
+
+function tableLines(gf) {
+  const rows = gf.getElementsByTagNameNS(NS_A, 'tr');
+  const out = [];
+  for (let r = 0; r < rows.length; r++) {
+    const cells = rows[r].getElementsByTagNameNS(NS_A, 'tc');
+    const cellTexts = [];
+    for (let c = 0; c < cells.length; c++) {
+      const ps = cells[c].getElementsByTagNameNS(NS_A, 'p');
+      let t = [];
+      for (let i = 0; i < ps.length; i++) { const x = paraText(ps[i]); if (x) t.push(x); }
+      cellTexts.push(t.join(' '));
+    }
+    const line = cellTexts.filter(Boolean).join(' | ');
+    if (line) out.push(line);
+  }
+  return out;
+}
+
+async function parsePptx(zip, DOMParserImpl) {
+  const parser = new DOMParserImpl();
+
+  // 1. Lấy đúng thứ tự slide từ presentation.xml + rels
+  const presXml = await zip.text('ppt/presentation.xml');
+  const relsXml = await zip.text('ppt/_rels/presentation.xml.rels');
+  if (!presXml || !relsXml) throw new Error('Đây không phải file PowerPoint (.pptx) hợp lệ.');
+
+  const relDoc = parser.parseFromString(relsXml, 'application/xml');
+  const relMap = new Map();
+  const rels = relDoc.getElementsByTagName('Relationship');
+  for (let i = 0; i < rels.length; i++) {
+    relMap.set(rels[i].getAttribute('Id'), rels[i].getAttribute('Target').replace(/^\/?ppt\//, '').replace(/^\.\.\//, ''));
+  }
+
+  const presDoc = parser.parseFromString(presXml, 'application/xml');
+  const sldIds = presDoc.getElementsByTagNameNS(NS_P, 'sldId');
+  const slidePaths = [];
+  for (let i = 0; i < sldIds.length; i++) {
+    const rid = sldIds[i].getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id')
+             || sldIds[i].getAttribute('r:id');
+    const target = relMap.get(rid);
+    if (target) slidePaths.push('ppt/' + target);
+  }
+
+  const results = [];
+  for (let idx = 0; idx < slidePaths.length; idx++) {
+    const path = slidePaths[idx];
+    const xml = await zip.text(path);
+    if (!xml) continue;
+    const doc = parser.parseFromString(xml, 'application/xml');
+    const spTree = doc.getElementsByTagNameNS(NS_P, 'spTree')[0];
+
+    let title = '';
+    const bodyLines = [];
+
+    if (spTree) {
+      walkShapes(spTree, (el) => {
+        if (el.localName === 'graphicFrame') {
+          tableLines(el).forEach(l => bodyLines.push(l));
+          return;
+        }
+        const type = phType(el);
+        const lines = shapeLines(el);
+        if (!lines.length) return;
+        if (!title && (type === 'title' || type === 'ctrTitle')) {
+          title = lines[0];
+          lines.slice(1).forEach(l => bodyLines.push(l));
+        } else if (type === 'sldNum' || type === 'dt' || type === 'ftr') {
+          // bỏ số trang, ngày, footer
+        } else {
+          lines.forEach(l => bodyLines.push(l));
+        }
+      }, parser);
+    }
+
+    // 2. Speaker notes qua rels của slide
+    let notes = [];
+    const slideName = path.split('/').pop();
+    const slideRelsPath = path.replace(slideName, '_rels/' + slideName + '.rels');
+    const srXml = await zip.text(slideRelsPath);
+    if (srXml) {
+      const srDoc = parser.parseFromString(srXml, 'application/xml');
+      const rs = srDoc.getElementsByTagName('Relationship');
+      for (let i = 0; i < rs.length; i++) {
+        const t = rs[i].getAttribute('Target') || '';
+        if (t.includes('notesSlide')) {
+          const notesPath = 'ppt/' + t.replace(/^\.\.\//, '');
+          const nXml = await zip.text(notesPath);
+          if (nXml) {
+            const nDoc = parser.parseFromString(nXml, 'application/xml');
+            const nTree = nDoc.getElementsByTagNameNS(NS_P, 'spTree')[0];
+            if (nTree) {
+              walkShapes(nTree, (el) => {
+                if (el.localName !== 'sp') return;
+                const type = phType(el);
+                if (type === 'sldNum' || type === 'sldImg') return;
+                shapeLines(el).forEach(l => {
+                  if (!/^\d+$/.test(l)) notes.push(l);
+                });
+              }, parser);
+            }
+          }
+        }
+      }
+    }
+
+    results.push({
+      no: idx + 1,
+      title: title || '(không có tiêu đề)',
+      body: bodyLines,
+      notes: notes
+    });
+  }
+
+  return results;
+}
+
+// ---------- XLSX WRITER (không thư viện) ----------
+const crcTable = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(u8) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = crcTable[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function makeZip(entries) {
+  // entries: [{name, data:Uint8Array}] — dùng method 0 (stored), không cần nén
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  const enc = new TextEncoder();
+
+  for (const e of entries) {
+    const nameBytes = enc.encode(e.name);
+    const crc = crc32(e.data);
+    const size = e.data.length;
+
+    const lh = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(lh.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0x0800, true); // UTF-8 flag
+    lv.setUint16(8, 0, true);      // stored
+    lv.setUint16(10, 0, true);
+    lv.setUint16(12, 0x2100, true); // fake time/date
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, size, true);
+    lv.setUint32(22, size, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lv.setUint16(28, 0, true);
+    lh.set(nameBytes, 30);
+
+    chunks.push(lh, e.data);
+
+    const ch = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(ch.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, 0, true);
+    cv.setUint16(14, 0x2100, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, offset, true);
+    ch.set(nameBytes, 46);
+    central.push(ch);
+
+    offset += lh.length + size;
+  }
+
+  const cdStart = offset;
+  let cdSize = 0;
+  for (const c of central) { chunks.push(c); cdSize += c.length; }
+
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, central.length, true);
+  ev.setUint16(10, central.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, cdStart, true);
+  chunks.push(eocd);
+
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const c of chunks) { out.set(c, p); p += c.length; }
+  return out;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    // loại ký tự điều khiển XML không hợp lệ
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+}
+
+function buildXlsx(rows, sheetName = 'Script') {
+  const enc = new TextEncoder();
+  const colWidths = [{ min: 1, max: 1, w: 10 }, { min: 2, max: 2, w: 42 }, { min: 3, max: 3, w: 95 }];
+
+  let sheetRows = '';
+  rows.forEach((r, i) => {
+    const rn = i + 1;
+    const cells = r.map((val, ci) => {
+      const ref = String.fromCharCode(65 + ci) + rn;
+      if (typeof val === 'number') return `<c r="${ref}" s="${rn === 1 ? 1 : 0}"><v>${val}</v></c>`;
+      return `<c r="${ref}" t="inlineStr" s="${rn === 1 ? 1 : 0}"><is><t xml:space="preserve">${esc(val)}</t></is></c>`;
+    }).join('');
+    sheetRows += `<row r="${rn}">${cells}</row>`;
+  });
+
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>${
+    colWidths.map(c => `<col min="${c.min}" max="${c.max}" width="${c.w}" customWidth="1"/>`).join('')
+  }</cols><sheetData>${sheetRows}</sheetData></worksheet>`;
+
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8E8E8"/><bgColor indexed="64"/></patternFill></fill></fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center"/></xf></cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+
+  const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${esc(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+
+  const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+
+  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+
+  const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+
+  return makeZip([
+    { name: '[Content_Types].xml', data: enc.encode(ct) },
+    { name: '_rels/.rels', data: enc.encode(rootRels) },
+    { name: 'xl/workbook.xml', data: enc.encode(wb) },
+    { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(wbRels) },
+    { name: 'xl/styles.xml', data: enc.encode(styles) },
+    { name: 'xl/worksheets/sheet1.xml', data: enc.encode(sheet) }
+  ]);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const drop = $('drop'), fileInput = $('file'), statusEl = $('status');
+const resultEl = $('result'), tbody = $('tbody'), metaEl = $('meta'), limitsEl = $('limits');
+let currentRows = null, currentName = 'script';
+
+function setStatus(msg, isErr){
+  statusEl.textContent = msg || '';
+  statusEl.className = 'status' + (isErr ? ' err' : '');
+}
+
+$('pick').addEventListener('click', () => fileInput.click());
+$('again').addEventListener('click', () => { fileInput.value=''; fileInput.click(); });
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handle(e.target.files[0]); });
+
+['dragenter','dragover'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f) handle(f);
+});
+
+async function handle(file){
+  resultEl.classList.remove('on');
+  if (!file.name.toLowerCase().endsWith('.pptx')) {
+    setStatus('Chỉ đọc được file .pptx. Nếu file của bạn là .ppt cũ, hãy mở bằng PowerPoint rồi lưu lại dưới dạng .pptx.', true);
+    return;
+  }
+  setStatus('Đang đọc ' + file.name + '…');
+  try {
+    const buf = await file.arrayBuffer();
+    const zip = await readZip(buf);
+    const slides = await parsePptx(zip, DOMParser);
+    if (!slides.length) { setStatus('Không tìm thấy slide nào trong file này.', true); return; }
+    render(slides, file.name);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus('Không đọc được file: ' + err.message, true);
+  }
+}
+
+function render(slides, filename){
+  currentName = filename.replace(/\.pptx$/i,'');
+  const rows = [['STT Slide','Tiêu đề / Chủ đề','Nội dung Script (lời thuyết minh)']];
+  tbody.innerHTML = '';
+  let emptyCount = 0, noteCount = 0;
+
+  slides.forEach(s => {
+    const script = [...s.body, ...s.notes].join('\n');
+    if (!script.trim()) emptyCount++;
+    if (s.notes.length) noteCount++;
+    rows.push([s.no, s.title, script]);
+
+    const tr = document.createElement('tr');
+    const c1 = document.createElement('td'); c1.className='no'; c1.textContent = s.no;
+    const c2 = document.createElement('td'); c2.className='ttl'; c2.textContent = s.title;
+    const c3 = document.createElement('td'); c3.className='scr';
+    if (script.trim()) c3.textContent = script;
+    else { c3.textContent = 'Slide này không có chữ nào đọc được'; c3.classList.add('empty'); }
+    tr.append(c1,c2,c3);
+    tbody.appendChild(tr);
+  });
+
+  currentRows = rows;
+  metaEl.textContent = slides.length + ' slide · ' + noteCount + ' slide có ghi chú thuyết trình' +
+    (emptyCount ? ' · ' + emptyCount + ' slide không có chữ' : '');
+
+  limitsEl.innerHTML = '<strong>Có thể thiếu nội dung ở những chỗ này:</strong>' +
+    '<ul>' +
+    '<li>Chữ nằm trong ảnh hoặc ảnh chụp màn hình</li>' +
+    '<li>Sơ đồ SmartArt và nhãn trong biểu đồ</li>' +
+    '<li>Slide có nhiều hộp chữ rời: thứ tự lấy ra theo thứ tự tạo hộp, không phải thứ tự nhìn thấy</li>' +
+    '</ul>' +
+    '<p style="margin:10px 0 0">Đối chiếu bảng trên với slide gốc trước khi dùng tiếp.</p>';
+
+  resultEl.classList.add('on');
+  resultEl.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+$('dl').addEventListener('click', () => {
+  if (!currentRows) return;
+  const bytes = buildXlsx(currentRows, 'Script');
+  const blob = new Blob([bytes], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = currentName + '_script.xlsx';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+});
+</script>
+</body>
+</html>
